@@ -68,7 +68,10 @@ export const DrawingScreen = () => {
           .m-signature-pad { 
             box-shadow: none; 
             border: none; 
-            height: ${Dimensions.get('window').height - 200}px; 
+            height: ${
+              Dimensions.get('window').height -
+              Dimensions.get('window').height * 0.3
+            }px; 
           } 
           .m-signature-pad--footer { 
             flex: 0; 
