@@ -1,4 +1,4 @@
-import React, {useEffect, useState, useRef} from 'react';
+import React, {useEffect, useState} from 'react';
 import {
   View,
   Text,
@@ -6,145 +6,152 @@ import {
   TouchableOpacity,
   Image,
   Modal,
+  FlatList,
+  TextInput,
 } from 'react-native';
-import {
-  Camera,
-  useCameraDevices,
-  CameraPermissionStatus,
-  PhotoFile,
-} from 'react-native-vision-camera';
+import * as ImagePicker from 'react-native-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import PhotoManipulator from 'react-native-photo-manipulator';
-import HeaderComponent from '../HeaderComponent';
 
-const PHOTO_STORAGE_KEY = 'captured_photo';
+const ALBUMS_STORAGE_KEY = 'albums';
 
 export const ARScreen = () => {
-  const [cameraPermission, setCameraPermission] =
-    useState<CameraPermissionStatus>('not-determined');
-  const [device, setDevice] = useState<any>(null);
-  const [savedPhoto, setSavedPhoto] = useState<string | null>(null);
-  const [editingPhoto, setEditingPhoto] = useState<string | null>(null);
-  const devices: any = useCameraDevices();
-  const cameraRef = useRef<Camera>(null);
+  const [albums, setAlbums] = useState<{name: string; photos: string[]}[]>([]);
+  const [currentAlbum, setCurrentAlbum] = useState<string | null>(null);
+  const [newAlbumName, setNewAlbumName] = useState('');
+  const [modalVisible, setModalVisible] = useState(false);
 
   useEffect(() => {
-    const requestPermission = async () => {
-      const permission = await Camera.requestCameraPermission();
-      setCameraPermission(permission);
-      if (permission === 'granted' && devices.back) {
-        setDevice(devices.back);
-      }
-    };
-
-    requestPermission();
-  }, [devices]);
-
-  useEffect(() => {
-    const loadPhoto = async () => {
+    const loadAlbums = async () => {
       try {
-        const storedPhoto = await AsyncStorage.getItem(PHOTO_STORAGE_KEY);
-        if (storedPhoto) {
-          setSavedPhoto(storedPhoto);
+        const storedAlbums = await AsyncStorage.getItem(ALBUMS_STORAGE_KEY);
+        if (storedAlbums) {
+          setAlbums(JSON.parse(storedAlbums));
         }
       } catch (error) {
-        console.error('Error loading photo:', error);
+        console.error('Error loading albums:', error);
       }
     };
 
-    loadPhoto();
+    loadAlbums();
   }, []);
 
-  const capturePhoto = async () => {
-    if (cameraRef.current) {
-      try {
-        const photo: PhotoFile = await cameraRef.current.takePhoto();
-        console.log('Captured photo:', photo);
-        // Save the photo path in AsyncStorage
-        await AsyncStorage.setItem(PHOTO_STORAGE_KEY, photo.path);
-        setSavedPhoto(photo.path);
-        // Open the editor with the captured photo
-        setEditingPhoto(photo.path);
-      } catch (error) {
-        console.log('Error capturing photo:', error);
-      }
+  const saveAlbums = async (updatedAlbums: typeof albums) => {
+    try {
+      await AsyncStorage.setItem(
+        ALBUMS_STORAGE_KEY,
+        JSON.stringify(updatedAlbums),
+      );
+    } catch (error) {
+      console.error('Error saving albums:', error);
     }
   };
 
-  const rotatePhoto = async () => {
-    if (editingPhoto) {
-      try {
-        // Rotate the image by 90 degrees using react-native-photo-manipulator
-        const resultUri = await PhotoManipulator.rotate(editingPhoto, 90);
-        console.log('Edited photo:', resultUri);
-        // Save the edited photo path in AsyncStorage
-        await AsyncStorage.setItem(PHOTO_STORAGE_KEY, resultUri);
-        setSavedPhoto(resultUri);
-        // Close the editor modal after editing
-        setEditingPhoto(null);
-      } catch (error) {
-        console.log('Error editing photo:', error);
-      }
+  const pickImage = async () => {
+    try {
+      ImagePicker.launchImageLibrary({mediaType: 'photo'}, async result => {
+        if (result.assets && result.assets.length > 0 && result.assets[0].uri) {
+          const selectedImage = result.assets[0].uri;
+          if (currentAlbum) {
+            const updatedAlbums = albums.map(album =>
+              album.name === currentAlbum
+                ? {...album, photos: [...album.photos, selectedImage]}
+                : album,
+            );
+            setAlbums(updatedAlbums);
+            await saveAlbums(updatedAlbums);
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error selecting image:', error);
     }
   };
+
+  const createAlbum = async () => {
+    if (newAlbumName.trim()) {
+      const newAlbum = {name: newAlbumName.trim(), photos: []};
+      const updatedAlbums = [...albums, newAlbum];
+      setAlbums(updatedAlbums);
+      await saveAlbums(updatedAlbums);
+      setNewAlbumName('');
+      setModalVisible(false);
+    }
+  };
+
+  const renderAlbumItem = ({
+    item,
+  }: {
+    item: {name: string; photos: string[]};
+  }) => (
+    <TouchableOpacity
+      style={styles.albumItem}
+      onPress={() => setCurrentAlbum(item.name)}>
+      <Text style={styles.albumText}>{item.name}</Text>
+    </TouchableOpacity>
+  );
+
+  const renderPhotoItem = ({item}: {item: string}) => (
+    <Image source={{uri: item}} style={styles.photo} />
+  );
+
+  const currentAlbumData = albums.find(album => album.name === currentAlbum);
 
   return (
-    <>
-      <HeaderComponent title={'Holland'} />
-      <View style={styles.container}>
-        {cameraPermission === 'granted' && device ? (
-          <>
-            <Camera
-              ref={cameraRef}
-              style={styles.camera}
-              device={device}
-              isActive={true}
-              photo={true} // Enable photo mode
-            />
-            <TouchableOpacity
-              style={styles.captureButton}
-              onPress={capturePhoto}>
-              <Text style={styles.captureButtonText}>Capture</Text>
-            </TouchableOpacity>
-            {savedPhoto && (
-              <Image source={{uri: savedPhoto}} style={styles.savedPhoto} />
-            )}
-          </>
-        ) : (
-          <View style={styles.infoContainer}>
-            <Text style={styles.infoText}>Enable Camera Permission</Text>
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => Camera.requestCameraPermission()}>
-              <Text style={styles.buttonText}>Open</Text>
-            </TouchableOpacity>
-            <Image
-              source={{
-                uri: 'https://cdn-icons-png.flaticon.com/512/747/747376.png',
-              }}
-              style={styles.placeholderImage}
-            />
-          </View>
-        )}
+    <View style={styles.container}>
+      {currentAlbum ? (
+        <>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => setCurrentAlbum(null)}>
+            <Text style={styles.backButtonText}>← Back to Albums</Text>
+          </TouchableOpacity>
+          <Text style={styles.albumHeader}>{currentAlbum}</Text>
+          <FlatList
+            data={currentAlbumData?.photos || []}
+            keyExtractor={(item, index) => index.toString()}
+            renderItem={renderPhotoItem}
+            numColumns={3}
+            contentContainerStyle={styles.photosContainer}
+          />
+          <TouchableOpacity style={styles.pickImageButton} onPress={pickImage}>
+            <Text style={styles.pickImageButtonText}>Add Photo</Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <>
+          <FlatList
+            data={albums}
+            keyExtractor={item => item.name}
+            renderItem={renderAlbumItem}
+            contentContainerStyle={styles.albumList}
+          />
+          <TouchableOpacity
+            style={styles.addAlbumButton}
+            onPress={() => setModalVisible(true)}>
+            <Text style={styles.addAlbumButtonText}>+ Add Album</Text>
+          </TouchableOpacity>
+        </>
+      )}
 
-        {/* Modal for editing the captured photo */}
-        <Modal visible={!!editingPhoto} animationType="slide">
-          <View style={styles.modalContainer}>
-            {editingPhoto && (
-              <Image source={{uri: editingPhoto}} style={styles.editingImage} />
-            )}
-            <TouchableOpacity style={styles.editButton} onPress={rotatePhoto}>
-              <Text style={styles.editButtonText}>Rotate 90°</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setEditingPhoto(null)}>
-              <Text style={styles.closeButtonText}>Close Editor</Text>
-            </TouchableOpacity>
-          </View>
-        </Modal>
-      </View>
-    </>
+      <Modal visible={modalVisible} animationType="slide">
+        <View style={styles.modalContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Album Name"
+            value={newAlbumName}
+            onChangeText={setNewAlbumName}
+          />
+          <TouchableOpacity style={styles.createButton} onPress={createAlbum}>
+            <Text style={styles.createButtonText}>Create Album</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={() => setModalVisible(false)}>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+    </View>
   );
 };
 
@@ -152,106 +159,81 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  camera: {
-    width: '100%',
-    height: '100%',
-  },
-  captureButton: {
-    position: 'absolute',
-    bottom: 30,
-    alignSelf: 'center',
-    backgroundColor: '#FF5722',
-    borderRadius: 50,
-    width: 70,
-    height: 70,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 5,
-  },
-  captureButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  savedPhoto: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    width: 100,
-    height: 100,
-    borderWidth: 2,
-    borderColor: '#FF5722',
-    borderRadius: 10,
-  },
-  infoContainer: {
-    backgroundColor: '#222',
-    padding: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.5,
-    shadowRadius: 5,
-    elevation: 5,
-  },
-  infoText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 15,
-    textAlign: 'center',
-  },
-  button: {
-    backgroundColor: '#FF5722',
-    paddingVertical: 10,
+    paddingTop: 60,
     paddingHorizontal: 20,
+    //marginTop:20
+  },
+  albumList: {
+    paddingBottom: 20,
+  },
+  albumItem: {
+    backgroundColor: '#444',
+    padding: 15,
+    marginVertical: 5,
+    borderRadius: 5,
+  },
+  albumText: {color: '#fff', fontSize: 16},
+  addAlbumButton: {
+    backgroundColor: '#FF5722',
+    padding: 15,
     borderRadius: 8,
-    marginBottom: 15,
+    alignSelf: 'center',
+    marginTop: 20,
   },
-  buttonText: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: 'bold',
+  addAlbumButtonText: {color: '#fff', fontSize: 16},
+  pickImageButton: {
+    backgroundColor: '#FF5722',
+    padding: 15,
+    borderRadius: 8,
+    alignSelf: 'center',
+    marginTop: 20,
   },
-  placeholderImage: {
-    width: 120,
-    height: 120,
-    marginTop: 10,
-    tintColor: '#fff',
-  },
+  pickImageButtonText: {color: '#fff', fontSize: 16},
   modalContainer: {
     flex: 1,
-    backgroundColor: '#000',
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
   },
-  editingImage: {
+  input: {
+    backgroundColor: '#fff',
+    padding: 10,
     width: '80%',
-    height: '50%',
-    borderRadius: 10,
     marginBottom: 20,
   },
-  editButton: {
+  createButton: {
     backgroundColor: '#FF5722',
     padding: 15,
     borderRadius: 8,
     marginBottom: 10,
   },
-  editButtonText: {
-    color: '#fff',
-    fontSize: 16,
-  },
-  closeButton: {
-    backgroundColor: '#555',
+  createButtonText: {color: '#fff', fontSize: 16},
+  cancelButton: {
+    backgroundColor: '#777',
     padding: 15,
     borderRadius: 8,
   },
-  closeButtonText: {
-    color: '#fff',
+  cancelButtonText: {color: '#fff', fontSize: 16},
+  backButton: {
+    marginBottom: 10,
+  },
+  backButtonText: {
+    color: '#FF5722',
     fontSize: 16,
+  },
+  albumHeader: {
+    fontSize: 20,
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  photosContainer: {
+    alignItems: 'center',
+  },
+  photo: {
+    width: 100,
+    height: 100,
+    margin: 5,
   },
 });
 
