@@ -1,4 +1,4 @@
-package com.holland
+package com.CrownArtAndDesign
 
 import android.app.Application
 import com.facebook.react.PackageList

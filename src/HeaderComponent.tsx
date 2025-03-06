@@ -30,7 +30,7 @@ const HeaderComponent: React.FC<HeaderProps> = ({
         )}
 
         {/* Заголовок */}
-        <Text style={styles.headerTitle}>{title}</Text>
+        <Text style={styles.headerTitle}>Crown Art & Design</Text>
 
         {/* Кнопка Профілю */}
         <TouchableOpacity

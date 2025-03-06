@@ -1,4 +1,4 @@
-package com.holland
+package com.CrownArtAndDesign
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
